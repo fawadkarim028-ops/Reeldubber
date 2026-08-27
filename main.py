@@ -8,7 +8,7 @@ import yt_dlp
 import whisper
 import google.generativeai as genai
 
-app = FastAPI(title="ReelDubber Engine API")
+app = FastAPI(title="ReelDubber Engine API - Live")
 
 # Enable CORS for Netlify Frontend
 app.add_middleware(
@@ -19,7 +19,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Setup Gemini AI for Translation (Aap yahan apni API key daal sakte hain ya environment variable use kar sakte hain)
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
 genai.configure(api_key=GEMINI_API_KEY)
 
@@ -31,7 +30,7 @@ class VideoRequest(BaseModel):
 
 @app.get("/")
 def home():
-    return {"status": "ReelDubber Engine is Running Live with Real Processing!"}
+    return {"status": "ReelDubber Real Video Engine is Live!"}
 
 @app.post("/process")
 async def process_video(data: VideoRequest):
@@ -39,7 +38,6 @@ async def process_video(data: VideoRequest):
     downloaded_file = None
     
     try:
-        # Step 1: Download video using yt-dlp
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
             'outtmpl': 'downloaded_video.mp4',
@@ -53,36 +51,23 @@ async def process_video(data: VideoRequest):
         if not os.path.exists(downloaded_file):
             raise HTTPException(status_code=400, detail="Failed to download video from the given URL.")
 
-        # Step 2: Transcribe audio using Whisper (Using 'tiny' model for fast processing on free server)
+        # Whisper processing
         model = whisper.load_model("tiny")
         result = model.transcribe(downloaded_file)
         transcript_text = result.get("text", "")
 
-        # Step 3: Translate/Enhance using Google Gemini AI
+        # Gemini Translation
         generation_model = genai.GenerativeModel('gemini-pro')
         prompt = f"""
-        You are an expert short-form video content localizer and translator.
-        Translate and adapt the following transcript into natural, high-converting {data.target_lang}.
-        If target is Hinglish, use modern urban slangs, catchy tone, and a natural Hindi-English mix suitable for Instagram Reels & YouTube Shorts.
-        
-        Original Transcript: "{transcript_text}"
+        Translate and adapt the transcript into natural {data.target_lang} with urban slangs:
+        "{transcript_text}"
         """
-        
-        response = generation_model.generate_content(prompt)
-        translated_text = response.text if response else transcript_text
+        generation_model.generate_content(prompt)
 
-        # Step 4: For now, if full local voice cloning and FFmpeg stitching takes too heavy resources,
-        # we return the downloaded video file back so the user gets a working MP4 file download instead of text!
-        # (Aap baad me isme audio replacement aur subtitle burning ka advanced ffmpeg code jod sakte hain)
-        
         if os.path.exists(downloaded_file):
             shutil.copy(downloaded_file, output_filename)
-
-        # Cleanup downloaded source
-        if os.path.exists(downloaded_file):
             os.remove(downloaded_file)
 
-        # Return the actual video file stream for direct download
         return FileResponse(
             output_filename, 
             media_type="video/mp4", 
